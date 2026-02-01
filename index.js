@@ -1,42 +1,46 @@
-require('dotenv').config();
-const { Client, GatewayIntentBits } = require('discord.js');
 const express = require('express');
+const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 
 const app = express();
 app.use(express.json());
 
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages],
-  partials: ['CHANNEL']
+const client = new Client({ 
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages] 
 });
 
-let botReady = false;
+const API_SECRET = process.env.API_SECRET;
 
-client.once('ready', () => {
-  console.log(`✅ Bot inloggad som ${client.user.tag}`);
-  botReady = true;
-});
-
+// VIKTIGT: Denna del tar emot anropet från Lovable
 app.post('/send-dm', async (req, res) => {
-  const authHeader = req.headers['authorization'];
-  if (authHeader !== `Bearer ${process.env.API_SECRET}`) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || authHeader !== `Bearer ${API_SECRET}`) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  if (!botReady) return res.status(503).json({ error: 'Bot not ready' });
-
-  const { discordId, message } = req.body;
+  const { discordId, message, embedTitle, embedColor } = req.body;
 
   try {
     const user = await client.users.fetch(discordId);
-    await user.send(message);
-    console.log(`✅ DM skickat till ${discordId}`);
+    
+    const embed = new EmbedBuilder()
+      .setTitle(embedTitle || 'Meddelande')
+      .setDescription(message)
+      .setColor(embedColor || 0x3b82f6)
+      .setTimestamp()
+      .setFooter({ text: 'Rekryteringsenheten' });
+
+    await user.send({ embeds: [embed] });
     res.json({ success: true });
   } catch (error) {
-    console.error('❌ Fel:', error.message);
-    res.status(500).json({ error: error.message });
+    console.error('DM Error:', error);
+    res.status(500).json({ error: 'Failed to send DM', details: error.message });
   }
 });
 
 client.login(process.env.DISCORD_BOT_TOKEN);
-app.listen(process.env.PORT || 10000);
+
+// Render använder process.env.PORT
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`Server körs på port ${PORT}`);
+});
